@@ -36,11 +36,13 @@ index = st.selectbox(
     ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 )
 
+if st.button("🔄 Refresh Data"):
+    st.cache_data.clear()
 
 # ---------------------------------------------------
 # CACHE DATA
 # ---------------------------------------------------
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=300)
 def load_option_data(symbol):
     return get_option_chain(symbol)
 
