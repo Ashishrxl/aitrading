@@ -42,7 +42,7 @@ if st.button("🔄 Refresh Data"):
 # ---------------------------------------------------
 # CACHE DATA
 # ---------------------------------------------------
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def load_option_data(symbol):
     return get_option_chain(symbol)
 
@@ -54,7 +54,7 @@ try:
     df = load_option_data(index)
 
     if df.empty:
-        st.error("⚠️ NSE data unavailable. Try again later.")
+        st.error("⚠️ NSE blocked request OR market closed OR network issue.")
         st.stop()
 
 except Exception as e:
