@@ -6,6 +6,43 @@ from data_fetch import get_option_chain
 from analysis import calculate_pcr, max_pain
 from news import get_market_news
 from ai_engine import ai_analysis
+from streamlit.components.v1 import html
+
+html(
+  """
+  <script>
+  try {
+    const sel = window.top.document.querySelectorAll('[href*="streamlit.io"], [href*="streamlit.app"]');
+    sel.forEach(e => e.style.display='none');
+  } catch(e) { console.warn('parent DOM not reachable', e); }
+  </script>
+  """,
+  height=0
+)
+
+disable_footer_click = """
+    <style>
+    footer {pointer-events: none;}
+    </style>
+"""
+st.markdown(disable_footer_click, unsafe_allow_html=True)
+
+# ---- Page Config ----
+st.set_page_config(
+    page_title="Explore AI",
+    page_icon="🌐",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# ---- Hide Streamlit Branding ----
+hide_ui = """
+<style>
+#MainMenu, footer, header {visibility: hidden;}
+[data-testid="stToolbar"], [data-testid="stStatusWidget"] {display: none !important;}
+</style>
+"""
+st.markdown(hide_ui, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------
