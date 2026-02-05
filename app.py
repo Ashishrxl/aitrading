@@ -1,262 +1,262 @@
 import streamlit as st
-import plotly.express as px
 import pandas as pd
+import requests
+import traceback
+import yfinance as yf
+import google.generativeai as genai
 
-from data_fetch import get_option_chain
-from analysis import calculate_pcr, max_pain
-from news import get_market_news
-from ai_engine import ai_analysis
-from streamlit.components.v1 import html
+# -----------------------------
+# CONFIG
+# -----------------------------
+st.set_page_config(page_title="AI Options Analyzer", layout="wide")
 
-html(
-  """
-  <script>
-  try {
-    const sel = window.top.document.querySelectorAll('[href*="streamlit.io"], [href*="streamlit.app"]');
-    sel.forEach(e => e.style.display='none');
-  } catch(e) { console.warn('parent DOM not reachable', e); }
-  </script>
-  """,
-  height=0
-)
+st.title("📊 AI Option Chain Analyzer")
 
-disable_footer_click = """
-    <style>
-    footer {pointer-events: none;}
-    </style>
-"""
-st.markdown(disable_footer_click, unsafe_allow_html=True)
+# Debug Toggle
+debug_mode = st.sidebar.toggle("🐞 Debug Mode", value=True)
 
-# ---- Page Config ----
-st.set_page_config(
-    page_title="Explore AI",
-    page_icon="🌐",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+def debug_log(msg):
+    if debug_mode:
+        st.sidebar.write(msg)
 
-# ---- Hide Streamlit Branding ----
-hide_ui = """
-<style>
-#MainMenu, footer, header {visibility: hidden;}
-[data-testid="stToolbar"], [data-testid="stStatusWidget"] {display: none !important;}
-</style>
-"""
-st.markdown(hide_ui, unsafe_allow_html=True)
+# -----------------------------
+# GOOGLE GEMINI SETUP
+# -----------------------------
+GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", "")
 
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
-# ---------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------
-st.set_page_config(
-    page_title="AI Options Trading Mentor",
-    layout="wide"
-)
-
-st.title("📊 AI Options Trading Mentor")
-
-
-# ---------------------------------------------------
-# DISCLAIMER
-# ---------------------------------------------------
-st.warning(
-    "⚠️ This tool provides analytical insights only. "
-    "It is NOT financial advice. Trading involves risk."
-)
-
-
-# ---------------------------------------------------
+# -----------------------------
 # INDEX SELECTION
-# ---------------------------------------------------
-index = st.selectbox(
+# -----------------------------
+index_choice = st.sidebar.selectbox(
     "Select Index",
-    ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+    ["NIFTY", "BANKNIFTY"]
 )
 
-if st.button("🔄 Refresh Data"):
-    st.cache_data.clear()
+symbol_map = {
+    "NIFTY": "^NSEI",
+    "BANKNIFTY": "^NSEBANK"
+}
 
-# ---------------------------------------------------
-# CACHE DATA
-# ---------------------------------------------------
-@st.cache_data(ttl=600)
-def load_option_data(symbol):
-    return get_option_chain(symbol)
-
-
-# ---------------------------------------------------
-# LOAD DATA
-# ---------------------------------------------------
-try:
-    df = load_option_data(index)
-
-    if df.empty:
-        st.error("⚠️ NSE blocked request OR market closed OR network issue.")
-        st.stop()
-
-except Exception as e:
-    st.error("Data fetch failed")
-    st.write(e)
-    st.stop()
-
-
-# ---------------------------------------------------
-# OPTION CHAIN TABLE
-# ---------------------------------------------------
-st.subheader("📋 Option Chain Data")
-st.dataframe(df, use_container_width=True)
-
-
-# ---------------------------------------------------
-# OI CHART
-# ---------------------------------------------------
-st.subheader("📊 Open Interest Distribution")
-
-fig = px.bar(
-    df,
-    x="strikePrice",
-    y=["CE_OI", "PE_OI"],
-    barmode="group"
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-
-# ---------------------------------------------------
-# METRICS CALCULATION
-# ---------------------------------------------------
-pcr = calculate_pcr(df)
-mp = max_pain(df)
-
-# Simple placeholder VIX
-vix = 15
-
-
-# ---------------------------------------------------
-# METRICS DISPLAY
-# ---------------------------------------------------
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(
-        "Put Call Ratio",
-        round(pcr, 2),
-        help="PCR indicates market sentiment. Higher PCR suggests bullish positioning."
-    )
-
-with col2:
-    st.metric(
-        "Max Pain",
-        mp,
-        help="Max Pain is the strike where maximum option sellers benefit."
-    )
-
-with col3:
-    st.metric(
-        "India VIX",
-        vix,
-        help="VIX measures market volatility. Higher VIX means higher uncertainty."
-    )
-
-
-# ---------------------------------------------------
-# IMPLIED VOLATILITY CHART
-# ---------------------------------------------------
-st.subheader("📉 Implied Volatility")
-
-iv_fig = px.line(
-    df,
-    x="strikePrice",
-    y=["CE_IV", "PE_IV"]
-)
-
-st.plotly_chart(iv_fig, use_container_width=True)
-
-
-# ---------------------------------------------------
-# EDUCATION PANEL
-# ---------------------------------------------------
-with st.expander("📘 Why These Metrics Matter"):
-    st.write("""
-    • **PCR** → Shows market sentiment  
-    • **Max Pain** → Possible expiry magnet level  
-    • **VIX** → Measures market volatility  
-    • **Implied Volatility** → Shows premium pricing
-    """)
-
-
-# ---------------------------------------------------
-# BEGINNER MODE
-# ---------------------------------------------------
-if st.checkbox("🧑‍🎓 Beginner Mode"):
-    st.info("""
-    **Delta** → Option price sensitivity to index movement  
-    **Gamma** → Speed of delta change  
-    **Theta** → Time decay of options  
-    **Vega** → Sensitivity to volatility  
-    """)
-
-
-# ---------------------------------------------------
-# NEWS PANEL
-# ---------------------------------------------------
-st.subheader("📰 Market News")
-
-try:
-    news_list = get_market_news()
-
-    for news in news_list:
-        st.write("•", news)
-
-except:
-    news_list = []
-    st.write("News unavailable")
-
-
-# ---------------------------------------------------
-# AI ANALYSIS PANEL
-# ---------------------------------------------------
-st.subheader("🤖 AI Market Guidance")
-
-if st.button("Run AI Analysis"):
+# -----------------------------
+# FETCH OPTION CHAIN NSE
+# -----------------------------
+def get_nse_option_chain(symbol):
 
     try:
-        ai_result = ai_analysis(pcr, vix, news_list)
+        url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
 
-        st.success(ai_result)
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        session = requests.Session()
+
+        # First request to get cookies
+        session.get("https://www.nseindia.com", headers=headers)
+
+        response = session.get(url, headers=headers)
+
+        debug_log(f"NSE Status Code: {response.status_code}")
+
+        data = response.json()
+
+        records = data["records"]["data"]
+
+        rows = []
+
+        for item in records:
+            strike = item["strikePrice"]
+
+            ce = item.get("CE", {})
+            pe = item.get("PE", {})
+
+            rows.append({
+                "Strike": strike,
+                "Call OI": ce.get("openInterest"),
+                "Call IV": ce.get("impliedVolatility"),
+                "Put OI": pe.get("openInterest"),
+                "Put IV": pe.get("impliedVolatility"),
+            })
+
+        df = pd.DataFrame(rows)
+
+        return df
 
     except Exception as e:
-        st.error("AI analysis failed")
-        st.write(e)
+        debug_log("NSE Error:")
+        debug_log(traceback.format_exc())
+        return None
 
 
-# ---------------------------------------------------
-# STRATEGY GUIDANCE
-# ---------------------------------------------------
-st.subheader("📌 Trading Guidance")
+# -----------------------------
+# FALLBACK OPTION DATA USING YFINANCE
+# -----------------------------
+def get_yfinance_options(symbol):
 
-if pcr > 1.2:
-    st.success("Market Bias: Bullish")
-elif pcr < 0.8:
-    st.error("Market Bias: Bearish")
-else:
-    st.info("Market Bias: Neutral")
+    try:
+        ticker = yf.Ticker(symbol)
+
+        expiries = ticker.options
+        debug_log(f"Expiry Dates: {expiries}")
+
+        if len(expiries) == 0:
+            return None
+
+        opt = ticker.option_chain(expiries[0])
+
+        calls = opt.calls[["strike", "openInterest", "impliedVolatility"]]
+        puts = opt.puts[["strike", "openInterest", "impliedVolatility"]]
+
+        df = calls.merge(puts, on="strike", suffixes=(" Call", " Put"))
+
+        df.rename(columns={"strike": "Strike"}, inplace=True)
+
+        return df
+
+    except Exception:
+        debug_log("YFinance Error:")
+        debug_log(traceback.format_exc())
+        return None
 
 
-# ---------------------------------------------------
-# RISK GUIDANCE
-# ---------------------------------------------------
-st.subheader("⚠️ Risk Guidance")
+# -----------------------------
+# GET VIX
+# -----------------------------
+def get_vix():
 
-st.write("""
-• Never risk more than 2% capital per trade  
-• Avoid trading during major news events  
-• Use stop loss in option buying  
-• Option selling carries unlimited risk without hedge  
+    try:
+        vix = yf.Ticker("^INDIAVIX")
+        data = vix.history(period="1d")
+        return float(data["Close"].iloc[-1])
+
+    except Exception:
+        debug_log("VIX Error:")
+        debug_log(traceback.format_exc())
+        return None
+
+
+# -----------------------------
+# NEWS FETCH
+# -----------------------------
+def get_news():
+
+    try:
+        url = "https://newsapi.org/v2/top-headlines?category=business&country=in&apiKey=demo"
+        res = requests.get(url)
+
+        articles = res.json().get("articles", [])[:5]
+
+        news_text = "\n".join([a["title"] for a in articles])
+
+        return news_text
+
+    except Exception:
+        debug_log("News Error:")
+        debug_log(traceback.format_exc())
+        return "No News"
+
+
+# -----------------------------
+# AI ANALYSIS
+# -----------------------------
+def ai_analysis(option_df, vix, news):
+
+    if not GOOGLE_API_KEY:
+        return "⚠️ Add Google API Key in secrets."
+
+    try:
+        model = genai.GenerativeModel("gemini-pro")
+
+        prompt = f"""
+        You are an options trading expert.
+
+        Analyze following option chain summary:
+        {option_df.head(20).to_string()}
+
+        VIX: {vix}
+
+        News:
+        {news}
+
+        Provide:
+        - Market Bias
+        - Key Support Resistance
+        - Risk Warning
+        """
+
+        response = model.generate_content(prompt)
+
+        return response.text
+
+    except Exception:
+        debug_log("AI Error:")
+        debug_log(traceback.format_exc())
+        return "AI Analysis Failed"
+
+
+# -----------------------------
+# FETCH DATA
+# -----------------------------
+st.header(f"📈 {index_choice} Option Chain")
+
+df = get_nse_option_chain(index_choice)
+
+if df is None:
+    st.warning("⚠️ NSE failed. Trying backup source...")
+    df = get_yfinance_options(symbol_map[index_choice])
+
+if df is None:
+    st.error("❌ All Data Sources Failed")
+    st.stop()
+
+st.dataframe(df)
+
+# -----------------------------
+# CALCULATIONS
+# -----------------------------
+st.subheader("📊 Derived Metrics")
+
+df["PCR"] = df["Put OI"] / df["Call OI"]
+
+st.line_chart(df.set_index("Strike")[["Call OI", "Put OI"]])
+
+# -----------------------------
+# VIX DISPLAY
+# -----------------------------
+vix = get_vix()
+
+if vix:
+    st.metric("India VIX", round(vix, 2))
+
+# -----------------------------
+# NEWS
+# -----------------------------
+st.subheader("📰 Market News")
+news = get_news()
+st.write(news)
+
+# -----------------------------
+# AI OUTPUT
+# -----------------------------
+st.subheader("🤖 AI Trading Guidance")
+
+analysis = ai_analysis(df, vix, news)
+
+st.info(analysis)
+
+# -----------------------------
+# USER EDUCATION
+# -----------------------------
+st.subheader("📘 Trading Guidance")
+
+st.markdown("""
+✔ High PCR → Bullish Sentiment  
+✔ Low PCR → Bearish Sentiment  
+✔ High VIX → Market Volatility  
+✔ Rising OI → Strong Trend  
+✔ Falling OI → Weak Trend  
 """)
-
-
-# ---------------------------------------------------
-# FOOTER
-# ---------------------------------------------------
-st.caption("Built with Streamlit + NSE Data + Google Gemini AI")
