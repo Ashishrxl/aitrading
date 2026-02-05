@@ -22,7 +22,7 @@ def debug_log(msg):
 # -----------------------------
 # GOOGLE GEMINI SETUP
 # -----------------------------
-GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", "")
+GOOGLE_API_KEY = st.secrets.get("KEY_1", "")
 
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
