@@ -5,26 +5,21 @@ import requests
 def get_option_chain(symbol):
 
     try:
-        # NSE public option chain JSON
-        url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
+        # NSE CDN endpoint (More stable)
+        url = f"https://cdn.nseindia.com/api/option-chain-indices?symbol={symbol}"
 
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/json"
         }
 
-        session = requests.Session()
-
-        # Load homepage first (important)
-        session.get("https://www.nseindia.com", headers=headers, timeout=5)
-
-        response = session.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=10)
 
         data = response.json()
 
-        # ----- DEBUG -----
+        # Safety check
         if "records" not in data:
-            print("Blocked or invalid response")
+            print("Invalid response from NSE CDN")
             return pd.DataFrame()
 
         records = data["records"]["data"]
@@ -54,5 +49,5 @@ def get_option_chain(symbol):
         return df.sort_values("strikePrice")
 
     except Exception as e:
-        print("Fetch error:", e)
+        print("CDN Fetch Error:", e)
         return pd.DataFrame()
